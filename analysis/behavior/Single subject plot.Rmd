@@ -1,0 +1,188 @@
+---
+title: "Single Subject analysis"
+author: "Jialin Li"
+date: "2024-11-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Reward change within trial
+
+We plot reward change for each trial on different trial lengths for single subjects
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+data <- read.csv("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/sub12.csv")
+unique_days <- unique(data$trial_length)
+
+for (days in unique_days) {
+  
+  df <- data %>% filter(trial_length == days)
+  sum_gap <- df %>% group_by(trial_num) %>% summarise(sum_gap = sum(gap, na.rm = TRUE))
+  df <- merge(df, sum_gap, by = "trial_num")
+  
+  p <- ggplot(df, aes(x = click_num, y = reward, color = factor(action), group = trial_num)) +
+    geom_line() +
+    geom_point() +
+    scale_color_manual(values = c("blue", "red")) +
+    scale_size_continuous(range = c(0.5, 2)) +
+    labs(x = "Days",
+         y = "Reward",
+         color = "Action") +
+    theme_minimal() +
+    # facet_wrap(~trial_num) +
+    geom_text(data = sum_gap, aes(x = Inf, y = Inf, label = paste("Cumulative Gap:", round(sum_gap, 2))),
+            hjust = 1.1, vjust = 1.1, inherit.aes = FALSE, size = 2, color = "black")
+  
+  print(p)
+}
+```
+
+## Cumulative Gap within trial
+
+We plot the change of Cumulative Gap on each trial on different trial lengths for single subjects
+
+```{r pressure, echo=FALSE}
+data <- read.csv("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond1/sub23.csv")
+unique_days <- unique(data$trial_length)
+
+for (days in unique_days) {
+  
+  # 过滤数据
+  df <- data %>% filter(trial_length == days)
+  
+  # 计算每个 trial_num 下的累积 gap，忽略 NA
+  df <- df %>%
+    group_by(trial_num) %>%
+    mutate(cumulative_gap = cumsum(ifelse(is.na(gap), 0, gap)))
+  
+  # 绘制图表
+  p <- ggplot(df, aes(x = click_num, y = cumulative_gap, color = factor(action), group = trial_num)) +
+    geom_line() +
+    geom_point() +
+    # scale_color_manual(values = c("blue", "red")) +
+    scale_size_continuous(range = c(0.5, 2)) +
+    labs(x = "Days",
+         y = "Cumulative Gap",
+         color = "Action")
+    # theme_minimal() +
+    # facet_wrap(~trial_num)
+  
+  print(p)
+}
+```
+
+## Proportion of exploration on different trial length
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(viridis)
+
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/"
+data <- combine_csv_files(folder_path)
+
+result <- data %>%
+  mutate(,
+    bins = cut(muvalue, breaks = seq(1, 5, by = 0.2), labels = seq(1.1, 4.9, by = 0.2))
+  ) %>%
+  group_by(subjID, bins, totaldays) %>%
+  summarise(
+    average_explore_rate = mean(action, na.rm = TRUE),
+    N = n(),
+    .groups = 'drop'
+  )
+
+result <- subset(result, N>10 &!is.na(bins))
+result$bins <- as.numeric(as.character(result$bins))
+
+p <- ggplot(result, aes(x = bins, y = average_explore_rate, color = as.factor(totaldays), group = as.factor(totaldays))) +
+  geom_point(size = 0.5) +
+  geom_line(linewidth = 0.5) + 
+  # geom_smooth(method = 'lm', se = FALSE, linewidth = 0.5) +
+  scale_color_viridis_d(option = "D") +  # 使用离散型颜色映射
+  labs(x = "Average Cumulative Gap", y = "Proportion of Exploration", color = 'Totaldays') +
+  theme_bw() +
+  facet_wrap(~subjID) +
+  ylim(0, 1)+
+  scale_x_continuous(breaks = seq(2.5, 4.5, by = 0.5)) +  # 设置横坐标间隔为0.5
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "red") # 添加水平
+```
+
+```{r}
+# 加载必要的库
+library(dplyr)
+library(ggplot2)
+
+# 读取数据
+data <- read.csv("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/sub12.csv")
+
+# 获取唯一的 trial_length 天数
+unique_days <- unique(data$trial_length)
+
+# 遍历每个唯一的天数
+for (days in unique_days) {
+  
+  # 过滤出当前天数的数据
+  df <- data %>% filter(trial_length == days)
+  
+  # 计算每个 trial_num 的累计 gap
+  sum_gap <- df %>% 
+    group_by(trial_num) %>% 
+    summarise(sum_gap = sum(gap, na.rm = TRUE))
+  
+  # 将累计 gap 合并回主数据框
+  df <- merge(df, sum_gap, by = "trial_num")
+  
+  # 创建 ggplot 图形
+  p <- ggplot(df, aes(x = click_num, y = reward, color = factor(action), group = trial_num)) +
+    # 绘制 reward 的线条和点
+    geom_line() +
+    geom_point() +
+    
+    # 绘制 highest_reward 的线条
+    geom_line(aes(y = highest_reward), color = "black", linetype = "dashed", size = 0.6) +
+    geom_point(aes(y = highest_reward), color = "black",
+               shape = 8, size = 0.6) +
+    
+    # 自定义颜色
+    scale_color_manual(values = c("blue", "red")) +
+    
+    # 自定义点大小
+    scale_size_continuous(range = c(0.5, 2)) +
+    
+    # 添加标签
+    labs(
+      x = "Click Number",
+      y = "Reward",
+      color = "Action",
+      title = paste("Trial Length:", days, "Days")
+    ) +
+    
+    # 使用简约主题
+    theme_minimal() +
+    
+    # 按 trial_num 分面
+    facet_wrap(~trial_num) +
+    
+    # 添加累计 gap 的文本标签
+    geom_text(
+      data = sum_gap, 
+      aes(x = Inf, y = Inf, label = paste("Cumulative Gap:", round(sum_gap, 2))),
+      hjust = 1.1, vjust = 1.1, 
+      inherit.aes = FALSE, size = 2, color = "black"
+    )
+  
+  # 打印图形
+  print(p)
+}
+```

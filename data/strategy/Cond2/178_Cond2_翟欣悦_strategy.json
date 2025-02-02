@@ -1,0 +1,1 @@
+"1 当出现-2.5（左右）及更高的分数时，倾向于后续选择back to the best\n2 当总天数较多时，更倾向于通过多次random跳出一个较高的分数然后后续back to the best；但如果天数较少（如5天），random1-2次后如果出现了尚可的分数如-2.8，可能后续就会back to the best"

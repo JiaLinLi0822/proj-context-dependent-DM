@@ -1,0 +1,1397 @@
+---
+title: "Behavioral Index"
+author: "Jialin Li"
+date: "2024-11-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Unexplained effect in previous Paper
+
+## Gap
+
+### Distribution of gap
+
+We define gap as the difference between current reward and the best reward in the current trial so far
+
+$$
+gap_t = r_t - r^*_t
+$$
+
+We found that the distribution of gap is skewed, in which subjects have more negative gap than positive gap
+
+```{r}
+library(ggplot2)
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/"
+combined_data <- combine_csv_files(folder_path)
+combined_data <- subset(combined_data, !(gap == 0))
+
+### Fig 8C
+
+# 计算核密度估计的最高点并获取相应的 Gap 值
+peak_data <- combined_data %>%
+  group_by(subjID) %>%
+  summarise(
+    peak_gap = density(gap, na.rm = TRUE)$x[which.max(density(gap, na.rm = TRUE)$y)],
+    peak_density = max(density(gap, na.rm = TRUE)$y)
+  ) %>%
+  mutate(peak_gap = round(peak_gap, 1)) %>%
+  ungroup()
+
+# 绘制直方图、核密度估计曲线，标注最高点，并保留 Gap = 0 的分界线
+p <- ggplot(combined_data, aes(x = gap)) +
+  geom_histogram(aes(y = ..density..), binwidth = 0.1, fill = "skyblue", color = "black", alpha = 0.6) + # 直方图
+  geom_density(color = "darkblue", size = 1) + # 核密度估计曲线
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") + # Gap = 0 分界线
+  geom_vline(data = peak_data, aes(xintercept = peak_gap), color = "red", linetype = "dashed") + # 核密度最高点
+  geom_text(
+    data = peak_data, 
+    aes(x = peak_gap, y = peak_density + 0.02, label = peak_gap), # 显示在密度曲线的上方
+    vjust = -0.5, size = 3.5, color = "red"
+  ) +
+  scale_x_continuous(breaks = seq(-2.5, 2.5, by = 0.5)) +
+  labs(x = "Gap", y = "Density") +
+  theme_bw() +
+  facet_wrap(~subjID) + # 每个 subjID 分面
+  theme(
+    axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+    axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+    axis.text.x = element_text(size = 10, color = 'black'),
+    axis.text.y = element_text(size = 10, color = 'black'),
+    strip.text = element_text(size = 12),
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(colour = "black")
+  )
+
+print(p)
+```
+
+### Asymmetrical impact on exploration behavior
+
+On average, we found subjects are more exploratory when they have negative gap compared to situation when they have positive gap. Thus, we called the different impact on exploration behavior between negative and positive gap as the asymmetrical impact of gap
+
+```{r}
+library(Rmisc)
+bins1 <- cut(combined_data$gap, breaks = seq(-2, 2, by = 0.2), labels = seq(-1.9, 1.9, 0.2))
+bins2 <- cut(combined_data$muvalue, breaks = seq(0.95, 5.05, by = 0.1), labels = seq(1, 5, by = 0.1))
+
+result <- summarySE(combined_data, measurevar = "action", groupvars = c("bins1"), na.rm = TRUE)
+result <- summarySE(combined_data, measurevar = "action", groupvars = c("bins1", "subjID"), na.rm = TRUE)
+popres <- summarySE(combined_data, measurevar = "action", groupvars = c("bins1"), na.rm = TRUE)
+result <- subset(result, N>=5)
+result$bins1 <- as.numeric(as.character(result$bins1))
+popres$bins1 <- as.numeric(as.character(popres$bins1))
+popres$subjID <- 0
+
+### Fig 8D
+p <- ggplot(result, aes(x = bins1, y = action, group = subjID, color = factor(subjID))) +
+  geom_smooth(se = FALSE, alpha = 0.1, color = '#DCDCDC', size = 0.5) +
+  # geom_line(alpha = 0.1, color = 'grey', size = 2) +  # 使用非常浅的黑色画出每个subjID的线条
+  ylim(0, 1) + 
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  scale_x_continuous(breaks = seq(-2.5, 2.5, by = 0.2)) +
+  xlim(-2, 2)+
+  labs(x = "Gap",
+       y = "Proportion of Exploration") +
+  theme_bw() +
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 10, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'),
+        axis.text.y = element_text(size = 10, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+p <- p + geom_smooth(data = popres, aes(x = bins1, y = action), show.legend = FALSE, se = FALSE, na.rm = TRUE)
+print(p)
+```
+
+### interaction between gap and highest reward
+
+We also found that there is a interaction between highest reward and gap. For instance, when the highest reward is relatively low, the more positive gap they have, the more they tend to explore the environment. However, when the highest reward is relatively high, subjects are more willing to explore the environment when they have negative gap than they have positive gap.
+
+For more figures, can see the 'FIG_gap_rstar.R' scripts.
+
+```{r}
+result3 <- summarySE(combined_data, measurevar = "action", groupvars = c("bins1", "bins2"), na.rm = TRUE)
+result3 <- subset(result3, N>=50)
+result3$bins1 <- round(as.numeric(as.character(result3$bins1)), 1)
+result3 <- na.omit(result3)
+p <- ggplot(result3, aes(x = bins1, y = action, group = bins2, color = factor(bins2))) +
+  # geom_line(show.legend = FALSE, linewidth = 1) +
+  # geom_smooth(se = FALSE, show.legend = TRUE) +  # 添加不同颜色的阴影
+  geom_point(show.legend = FALSE) +
+  ylim(0, 1) + 
+  xlim(-1.5, 2)+
+  scale_x_continuous(breaks = seq(-1.5, 1.5, 0.5))+
+  geom_errorbar(aes(ymin = action - se, ymax = action + se), width = 0.05, show.legend = FALSE) +
+  theme_bw() +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  labs(x = "Gap", y = "Proportion of Exploration", color = 'Highest reward') +  # 修改图注名称
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 10, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'),
+        axis.text.y = element_text(size = 10, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+print(p)
+```
+
+### No interaction between daysleft and gap
+
+We also consider whether there is a interaction between days left and gap. We found that overall, subjects tend to explore the environment when there is more days left. However, the asymmetrical effect of gap still exists, in which subjects tend to be more exploratory when they received negative gap.
+
+```{r}
+library(Rmisc)
+library(ggplot2)
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+folder_path1 <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/"
+# folder_path <- '/Users/lijialin/Desktop/课程/毕业设计/data/绘制/PropVrisk/specific/extract/'
+folder_path2 <- '/Users/lijialin/Desktop/课程/毕业设计/data/绘制/PropVrisk/simulation/extract/'
+combined_data <- combine_csv_files(folder_path)
+combined_data <- subset(combined_data, !(gap == 0))
+
+### Cut the bins
+bins1 <- cut(combined_data$gap, breaks = seq(-2, 2, by = 0.2), labels = seq(-1.9, 1.9, 0.2))
+# bins1 <- cut(combined_data$gap, breaks = seq(-2.05, 2.05, by = 0.1), labels = seq(-2, 2, 0.1))
+
+result <- summarySE(combined_data, measurevar = "action", groupvars = c("bins1", "daysleft"), na.rm = TRUE)
+result <- subset(result, N>=50)
+result$bins1 <- round(as.numeric(as.character(result$bins1)), 1)
+
+p <- ggplot(result, aes(x = bins1, y = action, group = daysleft, color = factor(daysleft))) +
+  # geom_line() +
+  geom_smooth(se = FALSE)+
+  geom_point() +
+  geom_errorbar(aes(ymin = action - se, ymax = action + se), width = 0.1, show.legend = FALSE)+
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  # geom_ribbon(aes(ymin = action - se, ymax = action + se, fill = factor(bins1)), alpha = 0.2, show.legend = FALSE) +
+  labs(x = "Gap",
+       y = "Proportion of Exploration",
+       color = "Days left") +
+  theme_bw() +
+  ylim(0, 1)+
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 10, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'),
+        axis.text.y = element_text(size = 10, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))+
+  scale_x_continuous(breaks = seq(-2, 2, 0.5))
+print(p)
+```
+
+### Model recovery
+
+```{r}
+library(Rmisc)
+library(ggplot2)
+
+# 设置路径和加载函数
+path <- '/Users/lijialin/Desktop/课程/毕业设计/Codes/'
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+# 文件夹路径
+folder_path1 <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/"  # 被试原数据
+folder_path2 <- '/Users/lijialin/Desktop/课程/毕业设计/data/绘制/PropVrisk/simulation/extract/'  # 模拟数据
+
+# 读取并处理被试原数据
+combined_data1 <- combine_csv_files(folder_path1)
+combined_data1 <- subset(combined_data1, !(gap == 0))
+
+# 将Gap分箱
+bins1 <- cut(combined_data1$gap, breaks = seq(-2, 2, by = 0.2), labels = seq(-1.9, 1.9, 0.2))
+combined_data1$bins1 <- bins1
+
+# 计算被试数据的统计结果
+result1 <- summarySE(combined_data1, measurevar = "action", groupvars = c("bins1", "daysleft"), na.rm = TRUE)
+result1 <- subset(result1, N >= 50)
+result1$bins1 <- round(as.numeric(as.character(result1$bins1)), 1)
+
+# 读取并处理模拟数据
+combined_data2 <- combine_csv_files(folder_path2)
+combined_data2 <- subset(combined_data2, !(gap == 0))
+
+# 将Gap分箱
+bins2 <- cut(combined_data2$gap, breaks = seq(-2, 2, by = 0.2), labels = seq(-1.9, 1.9, 0.2))
+combined_data2$bins1 <- bins2
+
+# 计算模拟数据的统计结果，按 daysleft 分组
+result2 <- summarySE(combined_data2, measurevar = "action", groupvars = c("bins1", "daysleft"), na.rm = TRUE)
+result2 <- subset(result2, N >= 50)
+result2$bins1 <- round(as.numeric(as.character(result2$bins1)), 1)
+
+# 绘制图像
+p <- ggplot() +
+  # 添加被试原数据的线条和误差条
+  geom_smooth(data = result1, aes(x = bins1, y = action, group = daysleft, color = factor(daysleft)), se = FALSE) +
+  geom_point(data = result1, aes(x = bins1, y = action, color = factor(daysleft), group = daysleft)) +
+  geom_errorbar(data = result1, aes(x = bins1, ymin = action - se, ymax = action + se, color = factor(daysleft)), 
+                width = 0.1, show.legend = FALSE) +
+  
+  # 添加模拟数据的带状区域
+  geom_ribbon(data = result2, aes(x = bins1, ymin = action - se, ymax = action + se, fill = factor(daysleft)), 
+              alpha = 0.2, inherit.aes = FALSE) +
+  
+  # 垂直线
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  
+  # 图例和标签
+  labs(x = "Gap",
+       y = "Proportion of Exploration",
+       color = "Days left (Original Data)",
+       fill = "Days left (Simulation)") +
+  
+  # 图形主题
+  theme_bw() +
+  ylim(0, 1) +
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 10, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'),
+        axis.text.y = element_text(size = 10, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  scale_x_continuous(breaks = seq(-2, 2, 0.5))
+
+# 打印图像
+print(p)
+```
+
+### Max Gap between Description and Experience
+
+```{r}
+library(tidyr)
+library(ggplot2)
+library(Rmisc)
+library(dplyr)
+
+folder_path1 <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/"
+folder_path2 <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/"
+data1 <- combine_csv_files(folder_path1)
+data2 <- combine_csv_files(folder_path2)
+data1$group <- 'EG'
+data2$group <- 'DG'
+combined_data <- rbind(data1, data2)
+combined_data <- subset(combined_data, !(gap == 0))
+
+### Cut the bins
+bins1 <- cut(combined_data$gap, breaks = seq(-2.05, 2.05, by = 0.1), labels = seq(-2, 2, 0.1))
+
+result <- summarySE(combined_data, measurevar = "action", groupvars = c("group", "bins1", "daysleft"), na.rm = TRUE)
+result <- subset(result, N>=50)
+result$bins1 <- round(as.numeric(as.character(result$bins1)), 1)
+
+max_gap_points <- result %>%
+  group_by(group, daysleft) %>%
+  slice_max(action, n = 1) %>%
+  select(daysleft, bins1)
+
+correlation_results <- combined_data %>%
+  group_by(group, daysleft) %>%
+  mutate(
+    left_part = gap <= max_gap_points$bins1[daysleft == daysleft][1],
+    correlation_left = ifelse(
+      sum(left_part) > 1, cor(gap[left_part], action[left_part], use = "complete.obs"), NA
+    ),
+    correlation_right = ifelse(
+      sum(!left_part) > 1, cor(gap[!left_part], action[!left_part], use = "complete.obs"), NA
+    )
+  ) %>%
+  summarise(
+    avg_corr_left = mean(correlation_left, na.rm = TRUE),
+    avg_corr_right = mean(correlation_right, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 整理数据为长格式以便于绘图
+correlation_plot_data <- correlation_results %>%
+  pivot_longer(
+    cols = c(avg_corr_left, avg_corr_right),
+    names_to = "side",
+    values_to = "correlation"
+  ) %>%
+  mutate(
+    side = ifelse(side == "avg_corr_left", "Left of Max Gap", "Right of Max Gap")
+  )
+
+# 绘制相关性柱状图
+correlation_plot <- ggplot(correlation_plot_data, aes(x = factor(daysleft), y = correlation, fill = side)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~group, nrow = 2, scales = "free_y") +
+  labs(
+    x = "Days Left",
+    y = "Average Correlation Coefficient",
+    fill = "Side of Max Gap",
+    title = "Correlation Comparison Between DG and EG Groups"
+  ) +
+  theme_bw() +
+  scale_fill_manual(values = c("Left of Max Gap" = "blue", "Right of Max Gap" = "red")) +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    strip.text = element_text(size = 14, face = "bold")
+  )
+
+# 打印图形
+print(correlation_plot)
+```
+
+```{r}
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/"
+combined_data <- combine_csv_files(folder_path)
+combined_data <- subset(combined_data, !(gap == 0))
+
+### Cut the bins
+bins1 <- cut(combined_data$gap, breaks = seq(-2.05, 2.05, by = 0.1), labels = seq(-2, 2, 0.1))
+
+result <- summarySE(combined_data, measurevar = "action", groupvars = c("bins1", "daysleft", "totaldays"), na.rm = TRUE)
+result <- subset(result, N >= 10)
+result$bins1 <- round(as.numeric(as.character(result$bins1)), 1)
+
+### 绘制热图
+heatmap_plot <- ggplot(result, aes(x = bins1, y = daysleft, fill = action)) +
+  geom_tile(color = "white") + # 添加白色边框区分格子
+  geom_text(aes(label = sprintf("%.2f", action)), color = "black", size = 2) +
+  scale_fill_gradient(low = "blue", high = "red", name = "Proportion of\nExploration") + # 渐变色
+  labs(
+    x = "Gap", 
+    y = "Days Left", 
+    title = "Heatmap of Proportion of Exploration by Total Days"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+    axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+    axis.text.x = element_text(size = 10, color = 'black'),
+    axis.text.y = element_text(size = 10, color = 'black'),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    strip.text = element_text(size = 14) # 分面标题字体大小
+  ) +
+  scale_x_continuous(breaks = seq(-2, 2, 0.5)) +
+  scale_y_continuous(breaks = unique(result$daysleft)) +
+  facet_wrap(~ totaldays) # 按 totaldays 分面
+
+print(heatmap_plot)
+```
+
+```{r}
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/"
+combined_data <- combine_csv_files(folder_path)
+combined_data <- subset(combined_data, !(gap == 0))
+
+### Cut the bins
+bins1 <- cut(combined_data$gap, breaks = seq(-2.05, 2.05, by = 0.1), labels = seq(-2, 2, 0.1))
+
+result <- summarySE(combined_data, measurevar = "action", groupvars = c("bins1", "daysleft", "totaldays"), na.rm = TRUE)
+result <- subset(result, N >= 10)
+result$bins1 <- round(as.numeric(as.character(result$bins1)), 1)
+
+### 绘制折线图
+line_plot <- ggplot(result, aes(x = bins1, y = action, color = factor(daysleft), group = daysleft)) +
+  geom_line(size = 1) + # 绘制折线
+  geom_point(size = 2) + # 添加点
+  labs(
+    x = "Gap",
+    y = "Proportion of Exploration",
+    title = "Line Plot of Proportion of Exploration by Total Days",
+    color = "Days Left"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+    axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+    axis.text.x = element_text(size = 10, color = 'black'),
+    axis.text.y = element_text(size = 10, color = 'black'),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    strip.text = element_text(size = 14) # 分面标题字体大小
+  ) +
+  scale_x_continuous(breaks = seq(-2, 2, 0.5)) +
+  ylim(0, 1) # 设置Y轴范围
+  # facet_wrap(~ totaldays) # 按 totaldays 分面
+
+print(line_plot)
+```
+
+# Description and Experience Group Difference
+
+## Difference in Exploration behavior
+
+### Trial Length
+
+We found subjects in experience group is more explorative than subjects in description group
+
+```{r}
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond1/"
+combined_data1 <- combine_csv_files(folder_path)
+
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/"
+combined_data2 <- combine_csv_files(folder_path)
+
+data1 <- summarySE(combined_data1, measurevar = c('action'), groupvars = c('trial_length', 'click_num', 'subjID'), na.rm = TRUE)
+data2 <- summarySE(combined_data2, measurevar = c('action'), groupvars = c('trial_length', 'click_num', 'subjID'), na.rm = TRUE)
+
+# 分离数据集
+fivedays_data1 <- subset(data1, trial_length == 7)
+fivedays_data2 <- subset(data2, trial_length == 7)
+
+# 计算汇总统计
+fivedayssum_data1 <- summarySE(fivedays_data1, measurevar = 'action', groupvars = c('click_num'), na.rm = TRUE)
+fivedayssum_data2 <- summarySE(fivedays_data2, measurevar = 'action', groupvars = c('click_num'), na.rm = TRUE)
+
+# 绘制图形
+p <- ggplot() +
+  # 绘制 data1 的 subjID 线条
+  geom_line(data = fivedays_data1, aes(x = click_num, y = action, group = subjID, color = 'DES'), alpha = 0.1, size = 1) +
+  # 绘制 data2 的 subjID 线条
+  geom_line(data = fivedays_data2, aes(x = click_num, y = action, group = subjID, color = 'EXP'), alpha = 0.1, size = 1) +
+  # 绘制 data1 的汇总线条
+  geom_line(data = fivedayssum_data1, aes(x = click_num, y = action, color = 'DES'), size = 1.5) +
+  # 绘制 data2 的汇总线条
+  geom_line(data = fivedayssum_data2, aes(x = click_num, y = action, color = 'EXP'), size = 1.5) +
+  # 添加 error bars
+  geom_errorbar(data = fivedayssum_data1, aes(x = click_num, ymin = action - se, ymax = action + se, color = 'DES'), width = 0.1) +
+  geom_errorbar(data = fivedayssum_data2, aes(x = click_num, ymin = action - se, ymax = action + se, color = 'EXP'), width = 0.1) +
+  labs(x = "Days", y = "Proportion of Exploration", color = "Condition") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1, 10, by = 1)) +
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+        axis.text.x = element_text(size = 10, color = 'black'),
+        axis.text.y = element_text(size = 10, color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+
+```{r}
+# 加载必要的库
+library(ggplot2)
+library(readr)    # 用于读取CSV文件
+library(tidyr)    # 数据处理
+library(scales)   # 处理数值刻度
+library(RColorBrewer) # 颜色调色板
+library(plyr)     # 数据操作
+library(dplyr)
+library(Rmisc)
+library(R.matlab) # 读取MAT文件，如果需要
+library(stringr)  # 字符串操作
+
+# 设置工作目录
+path <- '/Users/lijialin/Desktop/课程/毕业设计/Codes/'
+setwd(path)
+
+# 源代码文件，假设包含combine_csv_files和summarySE函数
+source('FUN_combine_csv_files.R')
+
+# 读取并合并Cond1的数据
+folder_path1 <- "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond1/"
+combined_data1 <- combine_csv_files(folder_path1)
+
+# 读取并合并Cond3的数据
+folder_path3 <- "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/"
+combined_data2 <- combine_csv_files(folder_path3)
+
+# 对Cond1和Cond3的数据进行汇总统计
+data1 <- summarySE(combined_data1, measurevar = 'action', groupvars = c('trial_length', 'click_num', 'subjID'), na.rm = TRUE)
+data2 <- summarySE(combined_data2, measurevar = 'action', groupvars = c('trial_length', 'click_num', 'subjID'), na.rm = TRUE)
+
+# 子集化数据，选择trial_length == 7天的数据
+fivedays_data1 <- subset(data1, trial_length == 8)
+fivedays_data2 <- subset(data2, trial_length == 8)
+
+# 对子集化数据进一步按click_num汇总统计
+fivedayssum_data1 <- summarySE(fivedays_data1, measurevar = 'action', groupvars = c('click_num'), na.rm = TRUE)
+fivedayssum_data2 <- summarySE(fivedays_data2, measurevar = 'action', groupvars = c('click_num'), na.rm = TRUE)
+
+# ---------------------------
+# 读取并处理模拟生成的optimal_policy_simu数据
+# ---------------------------
+
+# 读取模拟数据CSV文件
+simu_file <- "/Users/lijialin/Desktop/课程/毕业设计/Codes/New/Formal/optimal_policy_simu100000.csv"
+combined_data_sim <- read.csv(simu_file)
+
+# 子集化模拟数据，选择totalday == 7天的数据
+fivedays_data_sim <- subset(combined_data_sim, totalday == 8)
+
+# 假设'days'对应于'click_num'，将'days'重命名为'click_num'
+fivedays_data_sim <- fivedays_data_sim %>%
+  rename(click_num = days)
+
+# 为模拟数据添加一个虚拟的'subjID'，例如设为'0'，因为模拟数据可能没有具体的参与者
+fivedays_data_sim$subjID <- 'Simulated'
+
+# 对模拟数据进行汇总统计，按click_num分组
+fivedayssum_data_sim <- summarySE(fivedays_data_sim, measurevar = 'action', groupvars = c('click_num'), na.rm = TRUE)
+
+# 添加一个'Condition'列，用于区分不同条件
+fivedayssum_data1$Condition <- 'DES'
+fivedayssum_data2$Condition <- 'EXP'
+fivedayssum_data_sim$Condition <- 'OPT'
+
+# ---------------------------
+# 合并汇总统计数据
+# ---------------------------
+
+# 为fivedayssum_data1和fivedayssum_data2添加'Condition'列
+fivedayssum_data1 <- fivedayssum_data1 %>% mutate(Condition = 'DES')
+fivedayssum_data2 <- fivedayssum_data2 %>% mutate(Condition = 'EXP')
+
+# 为fivedayssum_data_sim添加'Condition'列
+fivedayssum_data_sim <- fivedayssum_data_sim %>% mutate(Condition = 'OPT')
+
+# 合并所有汇总统计数据
+combined_summary <- bind_rows(
+  fivedayssum_data1,
+  fivedayssum_data2,
+  fivedayssum_data_sim
+)
+
+# ---------------------------
+# 绘制图形
+# ---------------------------
+
+# 创建ggplot对象
+p <- ggplot() +
+  # 绘制 Cond1 的各参与者的线条
+  geom_line(data = fivedays_data1, aes(x = click_num, y = action, group = subjID, color = 'DES'), alpha = 0.1, size = 1) +
+  # 绘制 Cond3 的各参与者的线条
+  geom_line(data = fivedays_data2, aes(x = click_num, y = action, group = subjID, color = 'EXP'), alpha = 0.1, size = 1) +
+  
+  # 绘制 Cond1 的汇总线条
+  geom_line(data = fivedayssum_data1, aes(x = click_num, y = action, color = 'DES'), size = 1.5) +
+  # 绘制 Cond3 的汇总线条
+  geom_line(data = fivedayssum_data2, aes(x = click_num, y = action, color = 'EXP'), size = 1.5) +
+  # 绘制 模拟数据的汇总线条
+  geom_line(data = fivedayssum_data_sim, aes(x = click_num, y = action, color = 'OPT'), size = 1.5) +
+  
+  # 添加 Cond1 的误差条
+  geom_errorbar(data = fivedayssum_data1, aes(x = click_num, ymin = action - se, ymax = action + se, color = 'DES'), width = 0.1) +
+  # 添加 Cond3 的误差条
+  geom_errorbar(data = fivedayssum_data2, aes(x = click_num, ymin = action - se, ymax = action + se, color = 'EXP'), width = 0.1) +
+  # 添加 模拟数据 的误差条
+  geom_errorbar(data = fivedayssum_data_sim, aes(x = click_num, ymin = action - se, ymax = action + se, color = 'OPT'), width = 0.1) +
+  
+  # 设置标签和主题
+  labs(x = "Days", y = "Proportion of Exploration", color = "Condition") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1, 10, by = 1)) +
+  theme(
+    axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+    axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+    axis.text.x = element_text(size = 10, color = 'black'),
+    axis.text.y = element_text(size = 10, color = 'black'),
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(colour = "black")
+  ) +
+  # 
+  # 自定义颜色
+  scale_color_manual(values = c('DES' = '#F1A298', 'EXP' = '#75A1BC', 'OPT' = '#C6D6E5'))
+
+# 显示图形
+print(p)
+```
+
+### In different maximal reward
+
+```{r}
+folder_path1 <- '/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3'
+folder_path2 <- '/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1'
+df1 <- combine_csv_files(folder_path1)
+df2 <- combine_csv_files(folder_path2)
+df1$group <- 'EG'
+df2$group <- 'DG'
+
+EG_sum <- summarySE(df1, measurevar = 'action', groupvars = c('muvalue', 'group'), na.rm = TRUE)
+EG_sub <- summarySE(df1, measurevar = 'action', groupvars = c('muvalue', 'group', 'subjID'), na.rm = TRUE)
+DG_sum <- summarySE(df2, measurevar = 'action', groupvars = c('muvalue', 'group'), na.rm = TRUE)
+DG_sub <- summarySE(df2, measurevar = 'action', groupvars = c('muvalue', 'group', 'subjID'), na.rm = TRUE)
+EG_sum <- subset(EG_sum, N >= 500)
+DG_sum <- subset(DG_sum, N >= 500)
+DG_sub <- subset(DG_sub, N >= 20)
+EG_sub <- subset(EG_sub, N >= 20)
+
+# 绘制图形
+p <- ggplot() +
+  # 绘制 data1 的 subjID 线条
+  geom_line(data = EG_sub, aes(x = muvalue, y = action, group = subjID, color = 'EXP'), alpha = 0.1, size = 1) +
+  # 绘制 data2 的 subjID 线条
+  geom_line(data = DG_sub, aes(x = muvalue, y = action, group = subjID, color = 'DES'), alpha = 0.1, size = 1) +
+  # 绘制 data1 的汇总线条
+  geom_smooth(data = EG_sum, aes(x = muvalue, y = action, color = 'EXP'), size = 1.5, se = FALSE) +
+  # 绘制 data2 的汇总线条
+  geom_smooth(data = DG_sum, aes(x = muvalue, y = action, color = 'DES'), size = 1.5, se = FALSE) +
+  # 添加 error bars
+  geom_errorbar(data = EG_sum, aes(x = muvalue, ymin = action - se, ymax = action + se, color = 'EXP'), width = 0.05) +
+  geom_errorbar(data = DG_sum, aes(x = muvalue, ymin = action - se, ymax = action + se, color = 'DES'), width = 0.05) +
+  labs(x = "Reward", y = "Proportion of Exploration", color = "Condition") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(2.5, 4.5, by = 0.5)) +
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+        axis.text.x = element_text(size = 10, color = 'black'),
+        axis.text.y = element_text(size = 10, color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+
+```{r}
+# 加载必要的库
+library(ggplot2)
+library(dplyr)
+library(readr)    # 用于读取CSV文件
+library(tidyr)    # 数据处理
+library(scales)   # 处理数值刻度
+# library(RColorBrewer) # 如果需要调色板，可以加载
+# library(plyr)     # 如果不需要 plyr，建议不要加载
+# library(R.matlab) # 如果需要读取MAT文件，可以加载
+library(stringr)  # 字符串操作
+
+# 设置工作目录
+path <- '/Users/lijialin/Desktop/课程/毕业设计/Codes/'
+setwd(path)
+
+# 源代码文件，假设包含combine_csv_files和summarySE函数
+source('FUN_combine_csv_files.R')
+
+# ---------------------------
+# 读取并合并Cond3和Cond1的数据
+# ---------------------------
+
+# 读取并合并Cond3的数据
+folder_path1 <- '/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3'
+df1 <- combine_csv_files(folder_path1)
+df1$group <- 'EG'  # 指定组别为 'EG'
+
+# 读取并合并Cond1的数据
+folder_path2 <- '/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1'
+df2 <- combine_csv_files(folder_path2)
+df2$group <- 'DG'  # 指定组别为 'DG'
+
+# ---------------------------
+# 汇总统计
+# ---------------------------
+
+# Cond3 的汇总统计
+EG_sum <- summarySE(df1, measurevar = 'action', groupvars = c('muvalue', 'group'), na.rm = TRUE)
+EG_sub <- summarySE(df1, measurevar = 'action', groupvars = c('muvalue', 'group', 'subjID'), na.rm = TRUE)
+
+# Cond1 的汇总统计
+DG_sum <- summarySE(df2, measurevar = 'action', groupvars = c('muvalue', 'group'), na.rm = TRUE)
+DG_sub <- summarySE(df2, measurevar = 'action', groupvars = c('muvalue', 'group', 'subjID'), na.rm = TRUE)
+
+# ---------------------------
+# 数据过滤
+# ---------------------------
+
+# 根据样本量过滤
+EG_sum <- subset(EG_sum, N >= 500)
+DG_sum <- subset(DG_sum, N >= 500)
+EG_sub <- subset(EG_sub, N >= 20)
+DG_sub <- subset(DG_sub, N >= 20)
+
+# ---------------------------
+# 读取并处理模拟生成的 optimal_policy_simu 数据
+# ---------------------------
+
+# 读取模拟数据CSV文件
+simu_file <- "/Users/lijialin/Desktop/课程/毕业设计/Codes/New/Formal/optimal_policy_simu100000.csv"
+combined_data_sim <- read.csv(simu_file)
+
+# # 子集化模拟数据，选择 totalday == 7 天的数据（假设与其他数据集的 trial_length == 7 对应）
+fivedays_data_sim <- combined_data_sim
+# 
+# # 假设 'days' 对应于 'muvalue'，将 'days' 重命名为 'muvalue'
+fivedays_data_sim <- fivedays_data_sim %>%
+  dplyr::rename(muvalue = rstar)
+
+# 为模拟数据添加一个虚拟的 'group'，例如 'OPT'
+fivedays_data_sim$group <- 'OPT'
+
+# 为模拟数据添加一个虚拟的 'subjID'，例如 'Simulated'
+fivedays_data_sim$subjID <- 'Simulated'
+
+# Cond4 的汇总统计（模拟数据）
+OPT_sum <- summarySE(fivedays_data_sim, measurevar = 'action', groupvars = c('muvalue', 'group'), na.rm = TRUE)
+OPT_sub <- summarySE(fivedays_data_sim, measurevar = 'action', groupvars = c('muvalue', 'group', 'subjID'), na.rm = TRUE)
+
+# 根据样本量过滤
+OPT_sum <- subset(OPT_sum, muvalue >= 2.5 & muvalue <=4.5)
+OPT_sub <- subset(OPT_sub, muvalue >= 2.5 & muvalue <=4.5)
+
+# ---------------------------
+# 合并所有汇总统计数据（如果需要）
+# ---------------------------
+
+# 如果需要，可以将所有汇总数据合并到一个数据框中
+# combined_summary <- bind_rows(EG_sum, DG_sum, OPT_sum)
+
+# ---------------------------
+# 绘制图形
+# ---------------------------
+
+# 创建ggplot对象
+p <- ggplot() +
+  # Cond3 的各参与者的线条
+  geom_line(data = EG_sub, aes(x = muvalue, y = action, group = subjID, color = 'EXP'), alpha = 0.1, size = 1) +
+  
+  # Cond1 的各参与者的线条
+  geom_line(data = DG_sub, aes(x = muvalue, y = action, group = subjID, color = 'DES'), alpha = 0.1, size = 1) +
+  
+  # # 模拟数据的各参与者的线条
+  # geom_line(data = OPT_sub, aes(x = muvalue, y = action, group = subjID, color = 'OPT'), alpha = 0.1, size = 1) +
+  
+  # Cond3 的汇总线条
+  geom_smooth(data = EG_sum, aes(x = muvalue, y = action, color = 'EXP'), size = 1.5, se = FALSE) +
+  
+  # Cond1 的汇总线条
+  geom_smooth(data = DG_sum, aes(x = muvalue, y = action, color = 'DES'), size = 1.5, se = FALSE) +
+  
+  # 模拟数据的汇总线条
+  geom_line(data = OPT_sum, aes(x = muvalue, y = action, color = 'OPT'), size = 1.5, se = FALSE) +
+  
+  # 添加 Cond3 的误差条
+  geom_errorbar(data = EG_sum, aes(x = muvalue, ymin = action - se, ymax = action + se, color = 'EXP'), width = 0.05) +
+  
+  # 添加 Cond1 的误差条
+  geom_errorbar(data = DG_sum, aes(x = muvalue, ymin = action - se, ymax = action + se, color = 'DES'), width = 0.05) +
+  
+  # # 添加 模拟数据 的误差条
+  # geom_errorbar(data = OPT_sum, aes(x = muvalue, ymin = action - se, ymax = action + se, color = 'OPT'), width = 0.05) +
+  
+  # 设置标签和主题
+  labs(x = "Reward", y = "Proportion of Exploration", color = "Condition") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(2.5, 4.5, by = 0.5)) +
+  theme(
+    axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+    axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+    axis.text.x = element_text(size = 10, color = 'black'),
+    axis.text.y = element_text(size = 10, color = 'black'),
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(colour = "black")
+  ) +
+  
+  # 自定义颜色
+  scale_color_manual(values = c('DES' = '#F1A298', 'EXP' = '#75A1BC', 'OPT' = '#C6D6E5'))
+
+# 显示图形
+print(p)
+```
+
+## Difference of Gap between groups
+
+We found that subjects in experience group has more gap in each day on average compared to description groups
+
+```{r}
+library(gghalves)
+library(ggdist)
+
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond1/"
+combined_data1 <- combine_csv_files(folder_path)
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/"
+combined_data2 <- combine_csv_files(folder_path)
+
+data1 <- summarySE(combined_data1, measurevar = c('gap'), groupvars = c('trial_length', 'click_num', 'subjID'))
+data2 <- summarySE(combined_data2, measurevar = c('gap'), groupvars = c('trial_length', 'click_num', 'subjID'))
+
+# # 分离数据集
+# gap_data1 <- subset(data1, trial_length == 8)
+# gap_data2 <- subset(data2, trial_length == 8)
+
+gap_data1 <- data1
+gap_data2 <- data2
+
+# 计算汇总统计
+gapsum_data1 <- summarySE(gap_data1, measurevar = 'gap', groupvars = c('click_num'), na.rm = TRUE)
+gapsum_data2 <- summarySE(gap_data2, measurevar = 'gap', groupvars = c('click_num'), na.rm = TRUE)
+
+gap_data1$Condition <- 'DES'
+gap_data2$Condition <- 'EXP'
+combined_gap_data <- rbind(gap_data1, gap_data2)
+
+p <- ggplot(combined_gap_data, aes(x = as.factor(click_num), y = gap, fill = Condition)) +
+  # 绘制每个click_num的箱线图
+  geom_half_boxplot(outlier.shape = NA, alpha = 0.5, position = position_dodge(width = 0.8)) +
+  # 绘制每个click_num的半小提琴图
+  stat_halfeye(aes(y = gap), alpha = 0.5, adjust = 0.5, width = 0.8, justification = -0.2, 
+               position = position_dodge(width = 0.8)) +
+  geom_hline(yintercept = 0, color = "black", linetype = "dashed")+
+  labs(x = "Days", y = "Gap", fill = "Condition", color = "Condition") +
+  theme_bw() +
+  facet_wrap(~trial_length) + 
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+        axis.text.x = element_text(size = 10, color = 'black'),
+        axis.text.y = element_text(size = 10, color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+
+# 打印图形
+print(p)
+```
+
+## Cumulative Gap versus Trial Length
+
+We compare the difference of cumulative gap between description and experience. We expect that subjects in experience group will exhibit more negative cumulative gap since they exploit their reward later than subjects in description group.
+
+```{r cars}
+library(ggplot2)
+library(dplyr)
+
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+folder_path1 <- '/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3'
+folder_path2 <- '/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1'
+df1 <- combine_csv_files(folder_path1)
+df2 <- combine_csv_files(folder_path2)
+
+# 计算每个 trial_num 下 gap 的总和，忽略 NA，并仅保留最后一个值
+df_final1 <- df1 %>%
+  group_by(subjID, trial_num, totaldays) %>%
+  summarize(cumulative_gap = sum(gap, na.rm = TRUE),
+            ) %>%
+  ungroup()
+df_final1$group <- 'EXP'
+df_final1$ave_cum_gap <- df_final1$cumulative_gap/df_final1$totaldays
+
+df_final2 <- df2 %>%
+  group_by(subjID, trial_num, totaldays) %>%
+  summarize(cumulative_gap = sum(gap, na.rm = TRUE)) %>%
+  ungroup()
+df_final2$group <- 'DES'
+df_final2$ave_cum_gap <- df_final2$cumulative_gap/df_final2$totaldays
+
+df_final <- rbind(df_final2, df_final1)
+
+library(Rmisc)
+results <- summarySE(df_final, measurevar = "cumulative_gap", groupvars = c("subjID", "group", "totaldays"))
+results2 <- summarySE(df_final, measurevar = "cumulative_gap", groupvars = c("group", "totaldays"))
+
+# ANOVA for cumulative gap
+aov_results <- aov(cumulative_gap ~ group * totaldays, data = results)
+
+# Cumulative Gap versus Trial Length
+ggplot(results2, aes(x = factor(totaldays), y = cumulative_gap, fill = group)) +
+  geom_bar(stat = 'identity', position = position_dodge(width = 0.7), color = "black", width = 0.6) +
+  geom_errorbar(aes(ymin = cumulative_gap - se, ymax = cumulative_gap + se), 
+                position = position_dodge(width = 0.7), width = 0.2) +
+  geom_jitter(data = results, aes(x = factor(totaldays), y = cumulative_gap, color = group),
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.7), size = 2, alpha = 0.5) +
+  # scale_fill_manual(values = c("blue", "red"), name = "Group") +
+  # scale_color_manual(values = c("blue", "red"), guide = "none") +
+  labs(x = "Trial Length", 
+       y = "Cumulative Gap") +
+  theme_minimal()+
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 10, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'),
+        axis.text.y = element_text(size = 10, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+
+## Delay
+
+We define delay as the difference between the time when the subject gets the maximum reward and the time when the subject first switch from exploration to exploitation within trial. This indicator can describe the subject's tendency to delay the use of the maximal reward.
+
+Note: 如果试次内没有切换，则记录为NA
+
+```{r}
+
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond1/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond2/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond4/")
+file_names <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
+
+# 初始化结果存储数据框
+result <- data.frame()
+alldata <- data.frame()
+group <- 0
+groupnames <- c('DG', 'DL', 'EG', 'EL')
+
+for (folder in folder_path) {
+  group = group + 1
+  file_names <- list.files(path = folder, pattern = "\\.csv$", full.names = TRUE)
+  sub = 0
+  for (file in file_names) {
+    sub = basename(file)
+    info = data.frame(group = groupnames[group], subject = sub, name = basename(file))
+    data <- read.csv(file = file)
+    
+    # 初始化
+    delay <- matrix(NA, nrow = 180, ncol = 1)  # 初始化为 NA
+    firstswitchtime <- matrix(NA, nrow = 180, ncol = 1)  # 初始化为 NA
+    maxreward_clicknum <- matrix(0, nrow = 180, ncol = 1)
+    maxreward <- matrix(0, nrow = 180, ncol = 1)
+    switch_count <- matrix(0, nrow = 180, ncol = 1)
+    trial_length <- matrix(0, nrow = 180, ncol = 1)
+    
+    i <- 1
+    while (i <= nrow(data)) {
+      if (i + data[i, 'trial_length'] - 1 <= nrow(data)) {
+        # 获取 trial_num 当前的 trial_length
+        trial_length[data[i, 'trial_num']] <- data[i, 'trial_length']
+        
+        # 找到每个 trial 的首次 action 切换的 click_num
+        j <- i + 1
+        switch_occurred <- FALSE  # 标记是否发生切换
+        while (j <= i + data[i, 'trial_length'] - 1) {
+          if (data[j, 'click_num'] > 1 && data[j, 'action'] != data[j - 1, 'action']) {
+            if (is.na(firstswitchtime[data[i, 'trial_num']])) {
+              firstswitchtime[data[i, 'trial_num']] <- data[j, 'click_num']
+            }
+            switch_count[data[i, 'trial_num']] <- switch_count[data[i, 'trial_num']] + 1
+            switch_occurred <- TRUE  # 标记发生切换
+          }
+          j <- j + 1
+        }
+        
+        # 如果发生了切换，计算 delay，否则保持 NA
+        if (switch_occurred) {
+          subdata <- subset(data, trial_num == data[i, 'trial_num'])
+          max_reward_row <- which.max(subdata$reward)
+          maxreward_clicknum[data[i, 'trial_num']] <- subdata[max_reward_row, 'click_num']
+          maxreward[data[i, 'trial_num']] <- max(subdata$reward)
+          delay[data[i, 'trial_num']] <- firstswitchtime[data[i, 'trial_num']] - maxreward_clicknum[data[i, 'trial_num']]
+        }
+        
+        i <- j
+      } else {
+        i <- i + 1
+      }
+    }
+    
+    # 汇总数据并存储
+    trial_num <- seq(1, 180)
+    subdata <- data.frame(cbind(matrix(sub, nrow = 180, ncol = 1), trial_num, firstswitchtime, maxreward_clicknum, delay, maxreward, switch_count, trial_length, matrix(groupnames[group], nrow = 180, ncol = 1)))
+    colnames(subdata) <- c('subjID', 'trial_num', 'firstswitchtime', 'maxreward_clicknum', 'delay', 'highest_reward', 'switch_count', 'trial_length', 'group')
+    
+    # 将汇总数据添加到 alldata 数据框中
+    alldata <- rbind(alldata, subdata)
+  }
+}
+
+data <- subset(alldata, group == 'DG' | group == 'EG')
+data$group[data$group == 'DG'] <- 'DES'
+data$group[data$group == 'EG'] <- 'EXP'
+data$delay <- as.numeric(data$delay)
+data$trial_length <- as.numeric(data$trial_length)
+
+results <- summarySE(data, measurevar = c('delay'), groupvars = c('group', 'trial_length'), na.rm = TRUE)
+results2 <- summarySE(data, measurevar = "delay", groupvars = c("subjID", 'group', 'trial_length'), na.rm = TRUE)
+
+aov_results <- aov(delay ~ group * trial_length, data = results2)
+
+ggplot(results, aes(x = trial_length, y = delay, fill = group)) +
+  geom_bar(stat = 'identity', position = position_dodge(width = 0.7), color = "black", width = 0.6) +
+  geom_errorbar(aes(ymin = delay - se, ymax = delay + se), 
+                position = position_dodge(width = 0.7), width = 0.2) +
+  geom_jitter(data = results2, aes(x = trial_length, y = delay, color = group),
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.7), size = 2, alpha = 0.5) +
+  # scale_fill_manual(values = c("blue", "red"), name = "Group") +
+  # scale_color_manual(values = c("blue", "red"), guide = "none") +
+  labs(x = "Trial Length", 
+       y = "delay") +
+  theme_minimal()+
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 10, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'),
+        axis.text.y = element_text(size = 10, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+
+## Variability on Exploration behavior on different maximal reward level
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+
+folder_path1 <- '/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3'
+folder_path2 <- '/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1'
+df1 <- combine_csv_files(folder_path1)
+df2 <- combine_csv_files(folder_path2)
+df1$group <- 'EG'
+df2$group <- 'DG'
+
+# 计算每个 trial_num 下 gap 的总和，忽略 NA，并仅保留最后一个值
+df_final1 <- df1 %>%
+  group_by(subjID, muvalue) %>%
+  reframe(exploration = mean(action, na.rm = TRUE),
+          exploration_var = sd(action, na.rm = TRUE),
+          N = n()) %>%
+  ungroup()
+df_final1$group <- 'EG'
+
+df_final2 <- df2 %>%
+  group_by(subjID, muvalue) %>%
+  reframe(exploration = mean(action, na.rm = TRUE),
+          exploration_var = sd(action, na.rm = TRUE),
+          N = n()) %>%
+  ungroup()
+df_final2$group <- 'DG'
+df_final <- rbind(df_final2, df_final1)
+```
+
+### Average proportion of Exploration
+
+We first calculate the proportion of exploration in different maximal reward level for each subjects then average it. Thus, we get the difference of exploration behavior on different maximal reward level between description and experience group
+
+```{r}
+library(Rmisc)
+
+EG <- summarySE(df_final1, measurevar = 'exploration', groupvars = c('muvalue', 'group'))
+EG_sub <- summarySE(df_final1, measurevar = 'exploration', groupvars = c('muvalue', 'group', 'subjID'))
+DG <- summarySE(df_final2, measurevar = 'exploration', groupvars = c('muvalue', 'group'))
+DG_sub <- summarySE(df_final2, measurevar = 'exploration', groupvars = c('muvalue', 'group', 'subjID'))
+EG <- subset(EG, N == 44)
+DG <- subset(DG, N == 45)
+
+p <- ggplot() +
+  geom_errorbar(data = DG, aes(x = muvalue, ymin = exploration - se, ymax = exploration + se, color = 'DG'), width = 0.1, linewidth = 0.8) +
+  geom_errorbar(data = EG, aes(x = muvalue, ymin = exploration - se, ymax = exploration + se, color = 'EG'), width = 0.1, linewidth = 0.8) +
+  labs(x = "Reward", y = "Proportion of Exploration", color = "Condition") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1, 10, by = 1)) +
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+        axis.text.x = element_text(size = 10, color = 'black'),
+        axis.text.y = element_text(size = 10, color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+print(p)
+```
+
+### Variability of Exploration on each maximal reward level
+
+We calculate the standard deviation of exploration when subjects encounter same reward. We expect that in experience group, subjects has more variability due to the context effect, where subject's behavior is influenced by recent expereince. This analysis is trying to provide the evidence to decision by sampling theory
+
+```{r}
+results <- summarySE(df_final, measurevar = 'exploration_var', groupvars = c('muvalue', 'group'))
+results <- subset(results, N >= 44)
+p <- ggplot() +
+  geom_errorbar(data = subset(results, group == 'DG'), aes(x = muvalue, ymin = exploration_var - se, ymax = exploration_var + se, color = 'DG'), width = 0.1, linewidth = 0.8) +
+  geom_errorbar(data = subset(results, group == 'EG'), aes(x = muvalue, ymin = exploration_var - se, ymax = exploration_var + se, color = 'EG'), width = 0.1, linewidth = 0.8) +
+  labs(x = "Reward", y = "Variability of Exploration", color = "Condition") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1, 10, by = 1)) +
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 15, margin = margin(r = 10)),
+        axis.text.x = element_text(size = 10, color = 'black'),
+        axis.text.y = element_text(size = 10, color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+print(p)
+
+library(lme4)
+# library(lmerTest)
+library(parameters)
+# 模型: condition 和 reward 的主效应和交互作用
+df_final$groupID[df_final$group == 'DG'] <- 0
+df_final$groupID[df_final$group == 'EG'] <- 1
+model <- lmer(exploration_var ~ groupID * muvalue + (1 | subjID), data = df_final)
+
+# 查看结果
+summary(model)
+# 获取模型的详细统计，包括 p 值
+model_parameters(model)
+```
+
+## Cumulative Gap
+
+```{r}
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/"
+data <- combine_csv_files(folder_path)
+
+data <- data %>%
+  group_by(trial_num, subjID) %>%
+  mutate(cumulative_gap = cumsum(ifelse(!is.na(gap) & gap < 0, gap, 0)))
+
+data$cumulative_gap[is.na(data$gap)] <- 0
+
+bins1 <- cut(data$cumulative_gap, breaks = seq(-10.05, 0.05, by = 0.1), labels = seq(-10.0, 0, 0.1))
+bins2 <- cut(data$muvalue, breaks = seq(1, 5, by = 0.2), labels = seq(1.1, 4.9, by = 0.2))
+
+result <- summarySE(data, measurevar = "action", groupvars = c("bins1", "bins2"), na.rm = TRUE)
+result <- subset(result, N>=100)
+
+result$bins1 <- as.numeric(as.character(result$bins1))
+result <- subset(result, bins1!=0)
+
+p <- ggplot(result, aes(x = bins1, y = action, group = bins2, color = factor(bins2))) +
+  # geom_line() +
+  geom_smooth(se = FALSE, method = 'lm')+
+  geom_point() +
+  ylim(0, 1)+ 
+  geom_errorbar(aes(ymin = action - se, ymax = action + se), width = 0.1, show.legend = FALSE)+
+  labs(x = "Cumulative Gap",
+       y = "Proportion of Exploration",
+       color = "Reward") +
+  theme_bw() +
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 10, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'),
+        axis.text.y = element_text(size = 10, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+
+## Rank effect
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(purrr)
+
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond1/")
+data <- combine_csv_files(folder_path)
+data$gap[is.na(data$gap)] <- 0
+data$gap_sign <- ifelse(data$gap > 0, 1, 0)
+data$gap <- abs(data$gap) # make the negative gap to positive
+
+# 设置参数n为记忆中的样本数
+n <- 10  # 可调整
+
+# 初始化上一个 action = 1 行的 rank
+last_rank <- NA
+
+# 计算rank值
+data <- data %>%
+  group_by(subjID) %>%
+  mutate(
+    rank = map_dbl(row_number(), function(i) {
+      if (action[i] == 1) {
+        # 获取最近的n个action = 1的reward样本
+        recent_rewards <- reward[action == 1][pmax(1, sum(action[1:i] == 1) - n + 1):sum(action[1:i] == 1)]
+        
+        # 计算当前reward在这些样本中的rank
+        last_rank <<- sum(recent_rewards <= reward[i]) / length(recent_rewards)
+        return(last_rank)
+        
+      } else {
+        # action = 0时，rank继承上一个action = 1的rank
+        return(last_rank)
+      }
+    })
+  )
+
+data <- data %>%
+  group_by(trial_num) %>%
+  mutate(
+    muvalue = lag(highest_reward, default = NA),
+    rank_shift = lag(rank, default = NA),
+    daysleft = lag(trial_length - click_num, default = NA),
+    totaldays = lag(trial_length, default = NA),
+    gap = lag(gap, default = NA)
+  ) %>%
+  ungroup()
+
+data <- na.omit(data)
+
+library(lme4)
+# model <- glmer(action ~ muvalue + daysleft + totaldays + rank_shift + gap + gap_sign + gap*muvalue + (1 | subjID), 
+#                data = data, 
+#                family = binomial(link = "logit"),
+#                control = glmerControl(optimizer = "bobyqa", 
+#                                       optCtrl = list(maxfun = 100000),
+#                                       tolPwrss = 1e-6))
+model <- glmer(action ~ muvalue + daysleft + totaldays + rank_shift + (1 | subjID), 
+               data = data, 
+               family = binomial(link = "logit"),
+               control = glmerControl(optimizer = "bobyqa", 
+                                      optCtrl = list(maxfun = 100000),
+                                      tolPwrss = 1e-6))
+summary(model)
+```
+
+*Experience Condition*
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(purrr)
+
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/")
+data <- combine_csv_files(folder_path)
+data$gap[is.na(data$gap)] <- 0
+data$gap_sign <- ifelse(data$gap > 0, 1, 0)
+
+data <- data %>%
+  group_by(subjID, trial_num) %>%
+  mutate(
+    reward_rank = map_dbl(row_number(), function(i) {
+      # 获取当前点击之前的 reward
+      previous_rewards <- reward[1:i]
+      
+      # 计算当前 reward 在 previous_rewards 中的 rank
+      sum(previous_rewards <= reward[i]) / length(previous_rewards)
+    })
+  ) %>%
+  ungroup()
+
+# 删除可能的 NA 值
+data <- na.omit(data)
+
+data <- data %>%
+  group_by(subjID, trial_num) %>%
+  mutate(
+    muvalue = lag(highest_reward, default = NA),
+    rank_shift = lag(rank, default = NA),
+    daysleft = lag(trial_length - click_num, default = NA),
+    totaldays = lag(trial_length, default = NA),
+    gap = lag(gap, default = NA)
+  ) %>%
+  ungroup()
+
+data <- na.omit(data)
+
+library(lme4)
+model <- glmer(action ~ muvalue + daysleft + totaldays + rank_shift + gap + gap_sign + gap*muvalue + (1 | subjID),
+               data = data,
+               family = binomial(link = "logit"),
+               control = glmerControl(optimizer = "bobyqa",
+                                      optCtrl = list(maxfun = 100000),
+                                      tolPwrss = 1e-6))
+# model <- glmer(action ~ muvalue + daysleft + totaldays + rank_shift + (1 | subjID), 
+#                data = data, 
+#                family = binomial(link = "logit"),
+#                control = glmerControl(optimizer = "bobyqa", 
+#                                       optCtrl = list(maxfun = 100000),
+#                                       tolPwrss = 1e-6))
+summary(model)
+```
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond1/")
+data1 <- combine_csv_files(folder_path)
+data1$Condition <- 0 #description
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/")
+data2 <- combine_csv_files(folder_path)
+data2$Condition <- 1 #experience
+data <- rbind(data1, data2)
+
+# 设置参数n为记忆中的样本数
+n <- 10  # 可调整
+
+# 初始化上一个 action = 1 行的 rank
+last_rank <- NA
+
+# 计算rank值
+data <- data %>%
+  group_by(Condition, subjID) %>%
+  mutate(
+    rank = map_dbl(row_number(), function(i) {
+      if (action[i] == 1) {
+        # 获取最近的n个action = 1的reward样本
+        recent_rewards <- reward[action == 1][pmax(1, sum(action[1:i] == 1) - n + 1):sum(action[1:i] == 1)]
+        
+        # 计算当前reward在这些样本中的rank
+        last_rank <<- sum(recent_rewards <= reward[i]) / length(recent_rewards)
+        return(last_rank)
+        
+      } else {
+        # action = 0时，rank继承上一个action = 1的rank
+        return(last_rank)
+      }
+    })
+  )
+
+data <- data %>%
+  group_by(trial_num) %>%
+  mutate(
+    muvalue = lag(highest_reward, default = NA),
+    rank_shift = lag(rank, default = NA),
+    daysleft = lag(trial_length - click_num, default = NA),
+    totaldays = lag(trial_length, default = NA),
+    gap = lag(gap, default = NA)
+  ) %>%
+  ungroup()
+
+```
+
+## Influence of Reward Variability to Exploration
+
+```{r}
+folder_path <- "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/"
+combined_data <- combine_csv_files(folder_path)
+
+cumvar <- function(x) {
+  sapply(seq_along(x), function(i) var(x[1:i], na.rm = TRUE))
+}
+
+combined_data <- combined_data %>%
+  group_by(subjID, trial_num) %>%       # 按subjID和trial_num分组
+  arrange(daysleft) %>%                # 按daysleft排序
+  mutate(
+    rewardVar = cumvar(last_reward)         # 逐步计算reward的方差
+  ) %>%
+  ungroup()
+
+
+```

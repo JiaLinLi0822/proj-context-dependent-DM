@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>The minimalisitic exploration and exploitation task</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      text-align: center;
+    }
+    .description-container {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 20px;
+      margin: 20px 0;
+      background-color: #f9f9f9;
+    }
+    .button-container {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 30px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>The minimalisitic exploration and exploitation task</h1>
+  
+  <div class="description-container">
+    <ul>
+      <li>The entire experiment will consist of 180 rounds(For demonstration purpose, here we only set 6 trials for each context).</li>
+      <li>In each task, you will act as a tourist exploring a foreign city, with the number of days varying from 5 to 10.</li>
+      <li>On the first day, you will randomly visit a restaurant to dine, and we will inform you of the restaurant's rating.</li>
+      <li>Afterwards, you can choose either “Go to a random new restaurant” or “Go back to the best restaurant so far”.</li>
+      <li>Ensure that after each selection you click the ✓ (confirm) button under both options.</li>
+      <li>Then we will inform you of the restaurant's rating.</li>
+      <li>We will accumulate the ratings of all the restaurants you chose during that round, and this sum will be your total score for that round.</li>
+    </ul>
+  </div>
+  
+  <div class="button-container">
+    <button onclick="window.location.href='../Demo/Description/templates/exp.html'">Description context</button>
+    <button onclick="window.location.href='../Demo/Experience/templates/exp.html'">Experience context</button>
+  </div>
+</body>
+</html>

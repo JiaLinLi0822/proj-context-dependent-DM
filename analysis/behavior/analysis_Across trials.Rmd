@@ -1,0 +1,329 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Rank and Sampling
+
+```{r}
+# library('Rmisc')
+library(lme4)
+library(lmerTest)
+library(dplyr)
+library(ggplot2)
+
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+```
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond1/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond2/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond4/")
+file_names <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
+
+result <- data.frame()
+```
+
+### Individual Level
+
+$$
+Δaction = Δ\bar{r}_{t-1} + r^*_{t-1} + \sigma_{r-r^*} + T
+$$
+
+```{r}
+data <- read.csv('/Users/lijialin/Desktop/课程/毕业设计/data/DrawFig/Cond3/sub28.csv')
+
+data <- data %>%
+  group_by(trial_num) %>%
+  mutate(cumulative_gap = cumsum(ifelse(!is.na(gap), gap, 0)))
+
+result <- data %>%
+  group_by(trial_num) %>%
+  reframe(
+    cumulative_gap = last(cumulative_gap/trial_length, order_by = trial_num),
+    # cumulative_gap = last(cumulative_gap, order_by = trial_num),
+    average_explore_rate = mean(action, na.rm = TRUE,),
+    maxreward = max(highest_reward, na.rm = TRUE),
+    avereward = mean(ifelse(action == 1, reward, NA), na.rm = TRUE),
+    totaldays = mean(trial_length)
+  )
+
+result$daction <- c(NA, diff(result$average_explore_rate))
+result$lastcumulative_gap <- lag(result$cumulative_gap, 1)
+result$lastmaxreward <- lag(result$maxreward, 1)
+result$dreward <- lag(result$avereward, 1)
+
+res <- lm(daction ~ dreward + lastcumulative_gap +lastmaxreward + totaldays , result)
+# res <- lm(average_explore_rate ~ dreward + lastcumulative_gap +lastmaxreward + totaldays , result)
+summary(res)
+```
+
+### correlation
+
+```{r}
+data <- read.csv("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/sub32.csv")
+
+result <- data %>%
+  group_by(trial_num) %>%
+  reframe(
+    average_explore_rate = mean(action, na.rm = TRUE,),
+    maxreward = max(highest_reward, na.rm = TRUE),
+    avereward = mean(ifelse(action == 1, reward, NA), na.rm = TRUE),
+    avereward_count = sum(action == 1, na.rm = TRUE),
+    totaldays = mean(trial_length)
+  )
+
+result$daction <- c(NA, diff(result$average_explore_rate))
+result$lastmaxreward <- lag(result$maxreward, 1)
+result$lasttrialreward <- lag(result$avereward, 1)
+result$lasttrialrewarddiff <- c(NA, diff(result$lasttrialreward))
+result$lastrewardcount <- lag(result$avereward_count, 1)
+
+# daction <- c(NA, diff(action$action), NA)
+# dreward <- c(NA, NA, diff(reward$reward))
+
+res <- lm(daction ~ lasttrialreward + lastmaxreward + totaldays + maxreward + lastrewardcount, result)
+summary(res)
+
+### Fig 13B (Proportion of Exploration versus Avereward)
+p<- ggplot(result, aes(x = lasttrialreward, y = daction)) +
+  geom_point() + 
+  geom_smooth(method = "lm", se = TRUE, color = 'orange') +
+  labs(y = expression(Delta * "action"), x = expression(Delta* "reward"))+
+  theme_bw() +
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))+
+  theme(axis.title.x = element_text(size = 20, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 20, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'), 
+        axis.text.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),)
+```
+
+### Population Level
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/DrawFig/Cond3/")
+data <- combine_csv_files(folder_path)
+
+data <- data %>%
+  group_by(subjID, trial_num) %>%
+  mutate(cumulative_gap = cumsum(ifelse(!is.na(gap), gap, 0)))
+
+result <- data %>%
+  group_by(subjID, trial_num) %>%
+  reframe(
+    cumulative_gap = last(cumulative_gap/trial_length, order_by = trial_num),
+    # cumulative_gap = last(cumulative_gap, order_by = trial_num),
+    average_explore_rate = mean(action, na.rm = TRUE,),
+    maxreward = max(highest_reward, na.rm = TRUE),
+    avereward = mean(ifelse(action == 1, reward, NA), na.rm = TRUE),
+    totaldays = mean(trial_length),
+    sample = sum(action == 1, na.rm = TRUE)
+  )
+
+result <- result %>%
+  group_by(subjID) %>% 
+  mutate(
+    daction = c(NA, diff(average_explore_rate)),
+    lastcumulative_gap = lag(cumulative_gap, 1),
+    lastmaxreward = lag(maxreward, 1),
+    dreward = lag(avereward, 1),
+    samples = cumsum(sample)
+  )
+
+result <- subset(result, trial_num !=1)
+
+model <- lmer(daction ~ dreward + lastcumulative_gap + lastmaxreward + totaldays + (1 | subjID ), data = result)
+summary(model)
+```
+
+```{r}
+# 提取 action == 1 时的 reward
+rewards_action1 <- data %>%
+  filter(action == 1) %>%
+  # filter(subjID == 32) %>%
+  group_by(subjID) %>%
+  # slice_head(n = 80) %>%
+  slice(150:200) %>%
+  reframe(
+    reward = reward  # 保留 action == 1 时的 reward
+  )
+
+# 计算 rank function 并转换为 0 到 1 的范围
+rank_data <- rewards_action1 %>%
+  group_by(subjID) %>%
+  mutate(
+    rank = rank(reward, ties.method = "first"),  # 对 reward 进行降序排序
+    normalized_rank = rank / max(rank)  # 将 rank 转换到 0-1 范围
+  )
+
+library(Rmisc)
+rank_data <- summarySE(rank_data, measurevar = "normalized_rank", groupvars = c("subjID", 'reward'), na.rm = TRUE)
+# rank_data <- summarySE(rank_data, measurevar = "normalized_rank", groupvars = c('reward'), na.rm = TRUE)
+# 绘制 rank function
+library(ggplot2)
+
+ggplot(rank_data, aes(x = reward, y = normalized_rank, color = as.factor(subjID))) +
+  geom_line(size = 1) +  # 绘制 rank function 曲线
+  # geom_smooth(se = FALSE) +
+  labs(
+    title = "Normalized Rank Function of Rewards (Action = 1) for Each Participant",
+    x = "Reward",
+    y = "Normalized Rank (0 to 1)",
+    color = "Participant (subjID)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/")
+data <- combine_csv_files(folder_path)
+folder_path2 <- c("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/")
+data2 <- combine_csv_files(folder_path2)
+
+# Step 1: 将 trial_num 分为6组，每组30个
+data <- data %>%
+  mutate(group = cut(trial_num, breaks = c(0, 30, 60, 90, 120, 150, 180), labels = FALSE))
+
+data2 <- data2 %>%
+  mutate(group = cut(trial_num, breaks = c(0, 30, 60, 90, 120, 150, 180), labels = FALSE))
+
+data <- subset(data, subjID == 28)
+data2 <- subset(data2, subjID == 28)
+
+# Step 2: 对每个组计算 muvalue 下 action 的平均值
+grouped_data <- data %>%
+  group_by(subjID, group, muvalue) %>%
+  summarize(
+    avg_action = mean(action, na.rm = TRUE)  # 计算 action 平均值
+  ) %>%
+  ungroup()
+
+# Step 3: 提取 action == 1 时的 reward 并计算 rank function
+rank_data <- data2 %>%
+  filter(action == 1) %>%
+  group_by(subjID, group) %>%
+  mutate(
+    rank = rank(reward, ties.method = "first"),  # 计算 reward 的 rank
+    normalized_rank = rank / max(rank)  # 将 rank 转换为 0-1 范围,
+  ) %>%
+  ungroup()
+
+# Step 4: 绘制 action 平均值曲线（横坐标为 muvalue，纵坐标为 action 平均值）
+p1 <- ggplot(grouped_data, aes(x = muvalue, y = avg_action, color = as.factor(group))) +
+  # geom_line(size = 1) +  # 绘制每个组的 action 平均值曲线
+  # geom_point(size = 1) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 0) + 
+  # facet_wrap(~subjID) +  # 每个被试单独绘制一张图
+  labs(x = "Reward",
+    y = "Exploration",
+    color = "Group"
+  ) +
+  theme_minimal()+
+  xlim(1, 5)+
+  ylim(-0.2, 1.05)
+
+rank_data <- rank_data %>%
+    mutate(y_fixed = -0.03 * as.numeric(factor(group)))
+
+# Step 5: 在横坐标下方添加 reward 分布点图
+p2 <- ggplot(rank_data, aes(x = last_reward, y = y_fixed, color = as.factor(group))) +
+  geom_point(aes(size = 0.1), alpha = 0.7, position = position_jitter(height = -0.02)) +  # reward 分布点图
+  facet_wrap(~subjID) +  # 每个被试单独绘制一张图
+  labs(x = "Reward",
+       y = NULL,  # 隐藏 y 轴标签
+       color = "Group",
+  ) +
+  theme_minimal()
+
+p3 <- p1 +
+  geom_point(data = rank_data, aes(x = reward, y = y_fixed, shape = as.factor(group)), fill = "black", size = 2, stroke = 1.5, alpha = 0.7,position = position_jitter(height = -0.02)) + 
+    theme_bw() +
+  theme(axis.title.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 10, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'),
+        axis.text.y = element_text(size = 10, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))+
+  guides(shape = guide_legend(title = "Group"), color = guide_legend(title = "Group"))
+```
+
+```{r}
+data <- read.csv('/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/sub08.csv')
+data <- na.omit(data)
+
+data$rank <- pnorm(data$muvalue, 3, 0.6)
+predictor_variables <- c('rank', 'totaldays', 'daysleft', 'muvalue')
+
+formula <- paste(response_variable, "~", paste(predictor_variables, collapse = " + "))
+model <- glm(formula, data = data, family = binomial(link = "logit"))
+```
+
+```{r}
+log_regression <- function(response_variable, predictor_variables, folder_path) {
+  result <- data.frame()
+  group <- 0
+  
+  for (folder in folder_path) {
+    group <- group + 1
+    file_names <- list.files(path = folder, pattern = "\\.csv$", full.names = TRUE)
+    
+    for (file in file_names) {
+      data <- read.csv(file = file)
+      data <- na.omit(data)
+      
+      data$rank <- pnorm(data$muvalue, 3, 0.6)
+      predictor_variables <- c('rank', 'totaldays', 'daysleft', 'muvalue')
+      
+      formula <- paste(response_variable, "~", paste(predictor_variables, collapse = " + "))
+      model <- glm(formula, data = data, family = binomial(link = "logit"))
+      vif_values <- car::vif(model)
+      
+      coeff <- model$coefficients
+      
+      intercept <- coeff[1]
+      coefficients <- coeff[2:length(coeff)]
+      
+      AIC <- AIC(model)
+      
+      p <- summary(model)$coefficients[, 4]
+      
+      sub <- c(group, intercept, coefficients, p, AIC, vif_values)
+      result <- rbind(result, sub)
+    }
+  }
+  
+  col_names <- c('group', 'intercept', predictor_variables, 'pintercept', paste("p", predictor_variables, sep = ""), 
+                 'AIC', paste("VIF", predictor_variables, sep = "_"))
+  colnames(result) <- col_names
+  result$Condition[result$group == 1] <- 'DG'
+  result$Condition[result$group == 2] <- 'DL'
+  result$Condition[result$group == 3] <- 'EG'
+  result$Condition[result$group == 4] <- 'EL'
+  
+  return(result)
+}
+```
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond2/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond4/")
+```
+
+```{r}
+response_var <- 'action'
+predictor_vars <- c("muvalue", "daysleft", "totaldays")
+result <- log_regression(response_variable = response_var, predictor_variables = predictor_vars, folder_path = folder_path)
+```

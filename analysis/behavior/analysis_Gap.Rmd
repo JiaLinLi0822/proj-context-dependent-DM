@@ -1,0 +1,265 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# analysis_Gap and Cumulative Gap
+
+```{r}
+library(Rmisc)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(lme4)
+
+path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+setwd(path)
+source('FUN_combine_csv_files.R')
+```
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond2/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/",
+                 "/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond4/")
+```
+
+```{r}
+data <- combine_csv_files(folder_path)
+```
+
+## 1. Gap
+
+we define gap(regret) is the difference between current reward and the best reward in the current trial, where:
+
+$$
+Gap = r_t - r^*
+$$
+
+Here we examine the effect of gap in human exploration and exploitation behavior
+
+since gap is both on the left and right side of 0, we flip the negative gap to positive so that the relationship between positive and negative is linear.
+
+*Description condition*
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/")
+data <- combine_csv_files(folder_path)
+# data$gap[is.na(data$gap)] <- 0
+data <- na.omit(data)
+# data$gap <- abs(data$gap) # make the negative gap to positive
+
+model <- glmer(action ~ muvalue + daysleft + totaldays + gap + gap:muvalue + I(gap^2) + I(gap^2):muvalue +  (1 | subjID), 
+               data = data, 
+               family = binomial(link = "logit"),
+               control = glmerControl(optimizer = "bobyqa", 
+                                      optCtrl = list(maxfun = 100000),
+                                      tolPwrss = 1e-6))
+summary(model)
+```
+
+*Experience condition*
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/")
+data <- combine_csv_files(folder_path)
+# data$gap[is.na(data$gap)] <- 0
+data <- na.omit(data)
+# data$gap <- abs(data$gap) # make the negative gap to positive
+# action ~ muvalue + daysleft + totaldays + I(gap^2) + I(gap^2):muvalue +  (1 | subjID)
+model <- glmer(action ~ muvalue + daysleft + totaldays + gap + gap:muvalue + I(gap^2) + I(gap^2):muvalue +  (1 | subjID), 
+               data = data, 
+               family = binomial(link = "logit"),
+               control = glmerControl(optimizer = "bobyqa", 
+                                      optCtrl = list(maxfun = 100000),
+                                      tolPwrss = 1e-6))
+summary(model)
+```
+
+We found gap indeed influence human exploration behavior. Also, the interaction term $$gap\times muvalue$$ is significant, indicating that gap influence human exploration behavior differently when in different$r^*$ level
+
+If we look at the figure, we might find there is an asymmetry between the positive gap and negative gap, in which it influence human exploration behavior in different way. Thus, we introduce a dummy variable gap sign to examine whether there is some difference
+
+the mixed effect regression model becomes:
+
+$$
+action = \beta_1 r^* + \beta_2 t_{left} + \beta_3 T + \beta_4 gap + \beta_5 gap:r^* + \beta_6 \mathbb{I}(gap) + (1|subjID)
+$$
+
+*Description Condition*
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/")
+data <- combine_csv_files(folder_path)
+data$gap[is.na(data$gap)] <- 0
+data$gap_sign <- ifelse(data$gap > 0, 1, 0)
+data$gap <- abs(data$gap) # make the negative gap to positive
+
+# model <- glmer(action ~ muvalue + daysleft + totaldays + gap + gap:muvalue + gap_sign + gap_sign:muvalue + gap_sign:gap:muvalue + (1 | subjID), 
+#                data = data, 
+#                family = binomial(link = "logit"),
+#                control = glmerControl(optimizer = "bobyqa", 
+#                                       optCtrl = list(maxfun = 100000),
+#                                       tolPwrss = 1e-6))
+model <- glmer(action ~ muvalue + daysleft + totaldays + gap + gap:muvalue + gap_sign + (1 | subjID), 
+               data = data, 
+               family = binomial(link = "logit"),
+               control = glmerControl(optimizer = "bobyqa", 
+                                      optCtrl = list(maxfun = 100000),
+                                      tolPwrss = 1e-6))
+summary(model)
+```
+
+*Experience Condition*
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/")
+data <- combine_csv_files(folder_path)
+data$gap[is.na(data$gap)] <- 0
+data$gap_sign <- ifelse(data$gap > 0, 1, 0)
+# data$gap <- abs(data$gap) # make the negative gap to positive
+
+# model <- glmer(action ~ muvalue + daysleft + totaldays + gap + gap:muvalue + gap_sign + gap_sign:muvalue + gap_sign:gap:muvalue + (1 | subjID), 
+#                data = data, 
+#                family = binomial(link = "logit"),
+#                control = glmerControl(optimizer = "bobyqa", 
+#                                       optCtrl = list(maxfun = 100000),
+#                                       tolPwrss = 1e-6))
+model <- glmer(action ~ muvalue + daysleft + totaldays + gap + gap:muvalue + gap_sign + (1 | subjID), 
+               data = data, 
+               family = binomial(link = "logit"),
+               control = glmerControl(optimizer = "bobyqa", 
+                                      optCtrl = list(maxfun = 100000),
+                                      tolPwrss = 1e-6))
+summary(model)
+```
+
+We found that three interaction term $r^* \times gap_{sign} \times gap$ is significant both in two groups, which indicate that there is an asymmetry between positive gap and negative gap
+
+## 2. Cumulative Gap
+
+we define $$\sigma_r$$ as the cumulative gap
+
+For population level, we conduct mixed effect logistic regression model
+
+$$
+action = \beta_1 r^* + \beta_2 t_{left} + \beta_3 T + \beta_4 \sigma_r + \beta_5 r^* \times \sigma_r + (1|subjID)
+$$
+
+1.  **simple sum up the gap together and to see the effect**
+
+Description Condition
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/")
+data <- combine_csv_files(folder_path)
+data <- data %>%
+  group_by(subjID, trial_num) %>%
+  mutate(cumulative_gap = cumsum(ifelse(is.na(gap), 0, gap)))
+
+result1 <- data %>%
+  group_by(subjID, trial_num) %>%
+  filter(action == 0) %>%
+  reframe(mean_cumulative_gap = mean(sum(cumulative_gap)/totaldays)) %>%
+  ungroup()
+result1 <- subset(result1, mean_cumulative_gap !=0)
+
+population1 <- result1 %>%
+  group_by(subjID) %>%
+  reframe(mean_cumulative_gap = mean(mean_cumulative_gap, na.rm = TRUE))
+
+model <- glmer(action ~ muvalue + daysleft + totaldays + cumulative_gap + muvalue:cumulative_gap + (1 | subjID), 
+               data = data, 
+               family = binomial(link = "logit"),
+               control = glmerControl(optimizer = "bobyqa", 
+                                      optCtrl = list(maxfun = 100000),
+                                      tolPwrss = 1e-6))
+summary(model)
+```
+
+Experience Condition
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/")
+data <- combine_csv_files(folder_path)
+data <- data %>%
+  group_by(subjID, trial_num) %>%
+  mutate(cumulative_gap = cumsum(ifelse(is.na(gap), 0, gap)))
+
+result2 <- data %>%
+  group_by(subjID, trial_num) %>%
+  filter(action == 0) %>%
+  reframe(mean_cumulative_gap = mean(sum(cumulative_gap)/totaldays)) %>%
+  ungroup()
+
+result2 <- subset(result2, mean_cumulative_gap !=0)
+
+population2 <- result2 %>%
+  group_by(subjID) %>%
+  reframe(mean_cumulative_gap = mean(mean_cumulative_gap, na.rm = TRUE))
+
+model <- glmer(action ~ muvalue + daysleft + totaldays + cumulative_gap + muvalue:cumulative_gap + (1 | subjID), 
+               data = data, 
+               family = binomial(link = "logit"),
+               control = glmerControl(optimizer = "bobyqa", 
+                                      optCtrl = list(maxfun = 100000),
+                                      tolPwrss = 1e-6))
+summary(model)
+```
+
+In order to test the difference between description and experience group, we conduct the logistic regression model below:
+
+$$
+action = \beta_1 r^* + \beta_2 t_{left} + \beta_3 T + \beta_4 \sigma_r + \beta_5 r^* \times \sigma_r + \beta_6 Condition + \beta_7 r^* \times Condition + \beta_8 \sigma_r \times Condition + \beta_9 r^* \times \sigma_r \times Condition + (1|subjID)
+$$
+
+```{r}
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond1/")
+data1 <- combine_csv_files(folder_path)
+data1$Condition <- 0 #description
+data1 <- data1 %>%
+  group_by(subjID, trial_num) %>%
+  mutate(cumulative_gap = cumsum(ifelse(is.na(gap), 0, gap)))
+folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/extract/Cond3/")
+data2 <- combine_csv_files(folder_path)
+data2$Condition <- 1 # experience
+data2 <- data2 %>%
+  group_by(subjID, trial_num) %>%
+  mutate(cumulative_gap = cumsum(ifelse(is.na(gap), 0, gap)))
+data <- rbind(data1, data2)
+```
+
+compare condition
+
+```{r}
+model <- glmer(action ~ muvalue + daysleft + totaldays + cumulative_gap + muvalue:cumulative_gap + Condition + Condition:muvalue + Condition:cumulative_gap + Condition:muvalue:cumulative_gap + (subjID | Condition), 
+               data = data, 
+               family = binomial(link = "logit"),
+               control = glmerControl(optimizer = "Nelder_Mead", 
+                                      optCtrl = list(maxfun = 100000),
+                                      tolPwrss = 1e-6))
+summary(model)
+```
+
+We think that subject have two different reasons to choose exploitation. The first one is that they got satisfied reward. Another one is that they got suboptimal reward, when the accumulative gap is high enough they turn to exploitation. For two different condition, we thought that there have different tolerance for the cumulative gap. Thus, we calculate average cumulative gap when they exploit the restaurant in each trial for each subject. Note that subject must at least has one exploration except on the first day when they must choose exploration. Otherwise, we delete these trial, regarding the reason why they exploit is due to they got a highest reward instead of they accumulate enough gap. Note that the method we use to calculate average cumulative gap is divided by totaldays T in each trial, ensuring that this effect is not caused by the trial length.
+
+*plot the distribution of two groups*
+
+```{r}
+p <- ggplot() +
+  geom_histogram(data = result1, aes(x = mean_cumulative_gap, y = ..density..), binwidth = 0.2, fill = "blue", alpha = 0.5) + 
+  geom_histogram(data = result2, aes(x = mean_cumulative_gap, y = ..density..), binwidth = 0.2, fill = "red", alpha = 0.5) + 
+  # geom_density(aes(group = subjID), color = "gray", size = 0.5, alpha = 0.5) +
+  geom_vline(xintercept = mean(population1$mean_cumulative_gap), color = "blue", linetype = "dashed", size = 1.2) +
+  geom_vline(xintercept = mean(population2$mean_cumulative_gap), color = "red", linetype = "dashed", size = 1.2) +
+  labs(x = "Cumulative Gap", 
+       y = "Density")
+```
+
+t test
+
+```{r}
+shapiro.test(population1$mean_cumulative_gap)
+shapiro.test(population2$mean_cumulative_gap)
+t.test(population1$mean_cumulative_gap, population2$mean_cumulative_gap)
+```
