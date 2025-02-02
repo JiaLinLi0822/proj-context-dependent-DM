@@ -12,16 +12,14 @@ library(lmerTest)
 library(dplyr)
 library(ggplot2)
 
-path = ('/Users/lijialin/Desktop/课程/毕业设计/Codes/')
+path = ('/Users/lijialin/Desktop/Research/proj-context-dependent-DM/analysis/behavior/')
 setwd(path)
 source('FUN_combine_csv_files.R')
 ```
 
 ```{r}
-folder_path <- c("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond1/",
-                 "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond2/",
-                 "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/",
-                 "/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond4/")
+folder_path <- c("../data/drawFig/Cond1/", "../data/drawFig/Cond2/",
+                 "../data/drawFig/Cond3/", "../data/drawFig/Cond4/")
 file_names <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
 
 result <- data.frame()
@@ -34,7 +32,7 @@ $$
 $$
 
 ```{r}
-data <- read.csv('/Users/lijialin/Desktop/课程/毕业设计/data/DrawFig/Cond3/sub28.csv')
+data <- read.csv('/Users/lijialin/Desktop/Research/proj-context-dependent-DM/data/DrawFig/Cond3/sub28.csv')
 
 data <- data %>%
   group_by(trial_num) %>%
@@ -64,7 +62,7 @@ summary(res)
 ### correlation
 
 ```{r}
-data <- read.csv("/Users/lijialin/Desktop/课程/毕业设计/data/drawFig/Cond3/sub32.csv")
+data <- read.csv("/Users/lijialin/Desktop/Research/proj-context-dependent-DM/data/drawFig/Cond3/sub18.csv")
 
 result <- data %>%
   group_by(trial_num) %>%
@@ -81,11 +79,14 @@ result$lastmaxreward <- lag(result$maxreward, 1)
 result$lasttrialreward <- lag(result$avereward, 1)
 result$lasttrialrewarddiff <- c(NA, diff(result$lasttrialreward))
 result$lastrewardcount <- lag(result$avereward_count, 1)
+result$lasttotaldays <- lag(result$totaldays, 1)
+result$ratio <- result$lastrewardcount/result$lasttotaldays
+result$rewardratio <- result$maxreward/result$lasttrialreward
 
 # daction <- c(NA, diff(action$action), NA)
 # dreward <- c(NA, NA, diff(reward$reward))
 
-res <- lm(daction ~ lasttrialreward + lastmaxreward + totaldays + maxreward + lastrewardcount, result)
+res <- lm(daction ~ lasttrialreward + lastmaxreward + totaldays + maxreward + ratio + ratio*lasttrialreward + ratio*maxreward + lasttotaldays*lasttrialreward, result)
 summary(res)
 
 ### Fig 13B (Proportion of Exploration versus Avereward)
@@ -93,6 +94,25 @@ p<- ggplot(result, aes(x = lasttrialreward, y = daction)) +
   geom_point() + 
   geom_smooth(method = "lm", se = TRUE, color = 'orange') +
   labs(y = expression(Delta * "action"), x = expression(Delta* "reward"))+
+  theme_bw() +
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))+
+  theme(axis.title.x = element_text(size = 20, margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(size = 20, margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.text.x = element_text(size = 15, margin = margin(t = 10, r = 0, b = 0, l = 0), color = 'black'), 
+        axis.text.y = element_text(size = 15, margin = margin(t = 0, r = 10, b = 0, l = 0), color = 'black'),)
+```
+
+```{r}
+ggplot(result, aes(x = lasttrialreward, y = daction, color = ratio)) +
+  geom_point(size = 2) +
+  labs(
+    x = "Last Reward",
+    y = "Daction",
+    color = "Ratio"
+  ) +
   theme_bw() +
   theme(panel.border = element_blank(),
         panel.grid.major = element_blank(),
